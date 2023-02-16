@@ -9,7 +9,7 @@ class SignNegative(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = torch.sign(x)
         x[x == 0] = -1
-        x = x.to(torch.int8)
+        x = x.to(torch.float32)
         return x
 
 
@@ -20,7 +20,7 @@ class SignPositive(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = torch.clamp(x, min=0)
         x[x > 0] = 1
-        x = x.to(torch.int8)
+        x = x.to(torch.float32)
         return x
 
 
@@ -41,7 +41,7 @@ class BinaryModel(nn.Module):
             in_channels=in_channels,
             out_channels=hid_channels,
             kernel_size=9,
-            padding=0
+            padding=0,
         )
         self.pool1 = nn.MaxPool1d(kernel_size=2)
         self.conv2 = nn.Conv1d(
@@ -69,6 +69,7 @@ class BinaryModel(nn.Module):
                 SignNegative(),
                 SignPositive(),
             ]
+        batch_size = x.size()[0]
 
         x = self.conv1(x)
         x = self.pool1(x)
@@ -78,7 +79,7 @@ class BinaryModel(nn.Module):
         x = self.activations[1](x)
         x = self.conv3(x)
         x = self.pool3(x)
-        x = x.T
+        x = x.view(batch_size, -1)
         x = self.activations[2](x)
         x = self.linear1(x)
         x = self.activations[3](x)
