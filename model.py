@@ -60,8 +60,6 @@ class BinaryModel(nn.Module):
         self.pool3 = nn.AdaptiveMaxPool1d(output_size=1)
         self.linear1 = nn.Linear(in_features=hid_channels, out_features=out_channels)
         self.activations = [nn.ReLU(), nn.ReLU(), nn.ReLU(), nn.Sigmoid()]
-
-    def forward(self, x: torch.Tensor, eval_mode: bool = False) -> torch.Tensor:
         if eval_mode:
             self.activations = [
                 SignNegative(),
@@ -69,6 +67,8 @@ class BinaryModel(nn.Module):
                 SignNegative(),
                 SignPositive(),
             ]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size = x.size()[0]
 
         x = self.conv1(x)
