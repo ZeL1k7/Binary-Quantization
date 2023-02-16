@@ -69,7 +69,12 @@ class BinaryModule(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self._config = config
-        self.model = BinaryModel(in_channels=64, hid_channels=128, out_channels=1)
+        self.model = BinaryModel(
+            in_channels=64,
+            hid_channels=128,
+            out_channels=1,
+            eval_mode=config["classifier_eval_mode"],
+        )
         self.criterion = self.get_criterion()
         self.rocauc_calculator = BinaryAUROC()
         self.accuracy_calculator = BinaryAccuracy()
@@ -85,7 +90,7 @@ class BinaryModule(pl.LightningModule):
         dataset = self.train_dataset()
         params = self._config["dataloader_params"]
         return torch.utils.data.DataLoader(
-            dataset, shuffle=True, collate_fn=collate_batch, **params
+            dataset, shuffle=True, collate_fn=collate_batch, drop_last=True, **params
         )
 
     def test_dataset(self):
@@ -97,7 +102,7 @@ class BinaryModule(pl.LightningModule):
         dataset = self.test_dataset()
         params = self._config["dataloader_params"]
         return torch.utils.data.DataLoader(
-            dataset, shuffle=False, collate_fn=collate_batch, **params
+            dataset, shuffle=False, collate_fn=collate_batch, drop_last=True, **params
         )
 
     def val_dataloader(self):
@@ -126,7 +131,7 @@ class BinaryModule(pl.LightningModule):
 
     def test_epoch_end(self, outputs) -> None:
         logits = torch.stack([b["logits"] for b in outputs], 0)
-        labels = torch.stack([b["labels"] for b in outputs], 1)
+        labels = torch.stack([b["labels"] for b in outputs], 0)
         labels = labels.unsqueeze(1)
         labels = torch.permute(labels, (0, 2, 1))
 
