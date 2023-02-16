@@ -53,6 +53,18 @@ class BinaryDataset(torch.utils.data.Dataset):
         return len(self.df)
 
 
+def collate_batch(batch):
+    max_len = max([b[0].size(1) for b in batch])
+    labels = torch.tensor([b[1] for b in batch])
+    padder = lambda x: torch.nn.functional.pad(
+        x, (0, max_len - x.size(1)), "constant", 0
+    )
+    padded_images = tuple(padder(b[0]) for b in batch)
+    padded_images = torch.stack(padded_images, 0)
+    padded_image = torch.permute(padded_images, (1, 0, 2))
+    return padded_images, labels
+
+
 class BinaryModule(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
@@ -72,7 +84,9 @@ class BinaryModule(pl.LightningModule):
     def train_dataloader(self):
         dataset = self.train_dataset()
         params = self._config["dataloader_params"]
-        return torch.utils.data.DataLoader(dataset, shuffle=True, **params)
+        return torch.utils.data.DataLoader(
+            dataset, shuffle=True, collate_fn=collate_batch, **params
+        )
 
     def test_dataset(self):
         params = self._config["dataset_params"]
@@ -82,7 +96,9 @@ class BinaryModule(pl.LightningModule):
     def test_dataloader(self):
         dataset = self.test_dataset()
         params = self._config["dataloader_params"]
-        return torch.utils.data.DataLoader(dataset, shuffle=False, **params)
+        return torch.utils.data.DataLoader(
+            dataset, shuffle=False, collate_fn=collate_batch, **params
+        )
 
     def val_dataloader(self):
         return self.test_dataloader()
@@ -93,18 +109,13 @@ class BinaryModule(pl.LightningModule):
         return optimizer
 
     def get_criterion(self):
-        criterion_type = self._config["criterion_type"]
-        params = (
-            self._config["criterion_params"]
-            if "criterion_params" in self._config
-            else {}
-        )
-        return CRITERIONS[criterion_type](**params)
+        criterion = self._config["criterion"]
+        return criterion
 
     def training_step(self, batch, batch_idx):
         inputs, labels = batch
         logits = self.model(inputs)
-        loss = self.criterion(logits, labels)
+        loss = self.criterion(logits, labels.unsqueeze(-1))
         self.log("loss", loss)
         return {"loss": loss}
 
@@ -114,8 +125,10 @@ class BinaryModule(pl.LightningModule):
         return {"logits": logits.cpu(), "labels": labels.cpu()}
 
     def test_epoch_end(self, outputs) -> None:
-        logits = torch.tensor([b["logits"] for b in outputs])
-        labels = torch.tensor([b["labels"] for b in outputs])
+        logits = torch.stack([b["logits"] for b in outputs], 0)
+        labels = torch.stack([b["labels"] for b in outputs], 1)
+        labels = labels.unsqueeze(1)
+        labels = torch.permute(labels, (0, 2, 1))
 
         rocauc_metrics = self.rocauc_calculator(logits, labels)
         accuracy_metrics = self.accuracy_calculator(logits, labels)
@@ -131,8 +144,10 @@ class BinaryModule(pl.LightningModule):
         return self.test_step(batch, batch_idx)
 
     def validation_epoch_end(self, outputs) -> None:
-        logits = torch.tensor([b["logits"] for b in outputs])
-        labels = torch.tensor([b["labels"] for b in outputs])
+        logits = torch.stack([b["logits"] for b in outputs], 0)
+        labels = torch.stack([b["labels"] for b in outputs], 0)
+        labels = labels.unsqueeze(1)
+        labels = torch.permute(labels, (0, 2, 1))
 
         rocauc_metrics = self.rocauc_calculator(logits, labels)
         accuracy_metrics = self.accuracy_calculator(logits, labels)
